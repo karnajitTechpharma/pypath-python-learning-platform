@@ -290,6 +290,12 @@ async function startFirebase() {
       setError(friendlyError(error));
       showSignIn();
     });
+    setupNotice.hidden = true;
+    for (const input of form.querySelectorAll("input")) input.disabled = false;
+    submitButton.disabled = false;
+    signInTab.disabled = false;
+    signUpTab.disabled = false;
+    byId("forgotPassword").disabled = false;
   } catch (error) {
     setupNotice.hidden = false;
     setupNotice.textContent = "Could not connect to Firebase. Check the web config, Email/Password provider, authorized domain, and network, then reload this page.";
