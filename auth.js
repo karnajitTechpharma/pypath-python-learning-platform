@@ -16,6 +16,7 @@ const passwordInput = byId("password");
 const confirmInput = byId("confirmPassword");
 const nameInput = byId("displayName");
 const submitButton = byId("authSubmit");
+const googleButton = byId("googleSignIn");
 
 let auth;
 let mode = "signin";
@@ -78,6 +79,7 @@ function showSignIn() {
   byId("resendVerification").hidden = true;
   byId("authSignOut").hidden = true;
   verifyNotice.hidden = true;
+  googleButton.hidden = false;
   setMode("signin");
 }
 
@@ -89,6 +91,7 @@ function showVerification(user) {
   form.hidden = true;
   byId("authFoot").hidden = true;
   verifyNotice.hidden = false;
+  googleButton.hidden = true;
   byId("signedInNotice").hidden = false;
   byId("signedInNotice").textContent = `Verification email sent to ${user.email || "your address"}.`;
   byId("resendVerification").hidden = false;
@@ -106,7 +109,12 @@ function friendlyError(error) {
     "auth/weak-password": "Choose a stronger password with at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Wait a while, then try again.",
     "auth/user-disabled": "This account is disabled. Contact the site administrator.",
-    "auth/operation-not-allowed": "Email and password sign-in is not enabled in Firebase Console yet.",
+    "auth/operation-not-allowed": "This sign-in method is not enabled in Firebase yet. Enable it under Authentication → Sign-in method.",
+    "auth/popup-closed-by-user": "Google sign-in was cancelled. Try again when you’re ready.",
+    "auth/popup-blocked": "Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.",
+    "auth/cancelled-popup-request": "A Google sign-in window is already open. Finish or close it before trying again.",
+    "auth/account-exists-with-different-credential": "This Google email already has an email-and-password account. Sign in with that method instead.",
+    "auth/credential-already-in-use": "This Google account is already linked to a different PYTHEN account.",
     "auth/network-request-failed": "Could not reach Firebase. Check your internet connection and try again.",
     "auth/unauthorized-domain": "Add this website’s domain to Firebase Authentication’s authorized domains.",
   };
@@ -141,6 +149,7 @@ function validateForm() {
 
 function setBusy(busy) {
   submitButton.disabled = busy;
+  googleButton.disabled = busy || !auth;
   submitButton.textContent = busy
     ? (mode === "signup" ? "Creating account…" : "Signing in…")
     : (mode === "signup" ? "Create account" : "Sign in");
@@ -179,6 +188,22 @@ form.addEventListener("submit", async (event) => {
     setError(friendlyError(error));
   } finally {
     setBusy(false);
+  }
+});
+
+googleButton.addEventListener("click", async () => {
+  setError();
+  if (!auth || googleButton.disabled) return;
+  googleButton.disabled = true;
+  googleButton.setAttribute("aria-busy", "true");
+  try {
+    const { GoogleAuthProvider, signInWithPopup } = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (error) {
+    setError(friendlyError(error));
+  } finally {
+    googleButton.disabled = false;
+    googleButton.removeAttribute("aria-busy");
   }
 });
 
@@ -304,6 +329,7 @@ async function startFirebase() {
     signInTab.disabled = false;
     signUpTab.disabled = false;
     byId("forgotPassword").disabled = false;
+    googleButton.disabled = false;
   } catch (error) {
     setupNotice.hidden = false;
     setupNotice.textContent = "Could not connect to Firebase. Check the web config, Email/Password provider, authorized domain, and network, then reload this page.";
@@ -312,6 +338,7 @@ async function startFirebase() {
     signInTab.disabled = true;
     signUpTab.disabled = true;
     byId("forgotPassword").disabled = true;
+    googleButton.disabled = true;
     console.error("Firebase initialization failed:", error);
   }
 }
