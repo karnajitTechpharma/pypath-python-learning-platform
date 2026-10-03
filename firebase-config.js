@@ -1,10 +1,8 @@
-// Copy the Firebase web app config from Firebase Console > Project settings > Your apps.
-// These browser config values identify the Firebase project; Firestore rules and Auth
-// settings protect user data. Never put a service-account key in this file.
+// Firebase web app configuration (public client identifiers, not secrets).
 export const firebaseConfig = {
-  apiKey: "PASTE_FIREBASE_WEB_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  appId: "PASTE_FIREBASE_APP_ID",
+  apiKey: "AIzaSyA_tcChAv_S2bVSmTIZLPSYNcdKM8zrbKM",
+  authDomain: "pypath-learning-platform.firebaseapp.com",
+  projectId: "pypath-learning-platform",
+  appId: "1:1041352215070:web:b7f0a843d8c47075d93c0f",
 };
 
