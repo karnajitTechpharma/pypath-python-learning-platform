@@ -320,7 +320,7 @@ function startResendCooldown(seconds = 60) {
     }
   }, 1000);
 }
-function showVerification(user) {
+function showVerification(user, message = "") {
   currentUser = user;
   appView.hidden = true;
   screen.hidden = false;
@@ -330,7 +330,7 @@ function showVerification(user) {
   verifyNotice.hidden = false;
   googleButton.hidden = true;
   byId("signedInNotice").hidden = false;
-  byId("signedInNotice").textContent = `Firebase accepted a verification email request for ${user.email || "your address"}. It can take a few minutes; check Spam/Junk and Promotions if it is not in your inbox.`;
+  byId("signedInNotice").textContent = message || "Verify your email address to unlock lessons. Open PYTHEN’s latest verification email, or request another one below. Check Spam/Junk and Promotions if it is not in your inbox.";
   startResendCooldown();
   byId("resendVerification").hidden = false;
   byId("authSignOut").hidden = false;
@@ -417,14 +417,34 @@ form.addEventListener("submit", async (event) => {
     const email = emailInput.value.trim();
     if (mode === "signup") {
       const credential = await createUserWithEmailAndPassword(auth, email, passwordInput.value);
-      await updateProfile(credential.user, { displayName: nameInput.value.trim() });
-      await sendEmailVerification(credential.user, verificationActionSettings);
-      showVerification(credential.user);
+      const user = credential.user;
+
+      // Clear credentials as soon as Firebase creates the account. A later email
+      // delivery error must never send the learner back to account creation.
+      passwordInput.value = "";
+      confirmInput.value = "";
+      showVerification(user, "Your account is created. Firebase is requesting the verification email…");
+
+      try {
+        await sendEmailVerification(user, verificationActionSettings);
+        showVerification(user, `Firebase accepted a verification email request for ${user.email || "your address"}. It can take a few minutes; check Spam/Junk and Promotions if it is not in your inbox.`);
+      } catch (verificationError) {
+        showVerification(user, "Your account is created, but Firebase could not confirm the verification email request. Wait for the resend button, then try again. Do not create another account.");
+        setError(`Your account is already created. ${friendlyError(verificationError)} Use Resend verification email when it becomes available.`);
+      }
+
+      // A display-name update is helpful but optional; it must not block email
+      // verification or hide the account from the learner.
+      try {
+        await updateProfile(user, { displayName: nameInput.value.trim() });
+      } catch (profileError) {
+        console.warn("Account created; display name update could not complete:", profileError);
+      }
     } else {
       await signInWithEmailAndPassword(auth, email, passwordInput.value);
+      passwordInput.value = "";
+      confirmInput.value = "";
     }
-    passwordInput.value = "";
-    confirmInput.value = "";
   } catch (error) {
     setError(friendlyError(error));
   } finally {
@@ -477,7 +497,7 @@ byId("resendVerification").addEventListener("click", async () => {
     byId("signedInNotice").textContent = "Firebase accepted a new verification email request for " + (currentUser.email || "your address") + ". Check Spam/Junk and Promotions if it is not in your inbox.";
     startResendCooldown();
   } catch (error) {
-    setError(friendlyError(error));
+    setError(`Your account is already created. Firebase could not confirm the resend request. ${friendlyError(error)} Check your inbox and Spam/Junk for the latest message before retrying.`);
     if (error?.code === "auth/too-many-requests" || error?.code === "auth/quota-exceeded") {
       startResendCooldown(120);
     } else {
