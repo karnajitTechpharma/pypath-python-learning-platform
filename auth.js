@@ -23,6 +23,11 @@ let mode = "signin";
 let currentUser = null;
 let firebaseApp;
 let toastTimer;
+let resendCooldownTimer;
+const verificationActionSettings = {
+  url: "https://karnajittechpharma.github.io/pythen-learning-platform/",
+  handleCodeInApp: false,
+};
 
 function setError(message = "") {
   authError.textContent = message;
@@ -297,6 +302,24 @@ function showSignIn() {
   setMode("signin");
 }
 
+function startResendCooldown(seconds = 60) {
+  const button = byId("resendVerification");
+  clearInterval(resendCooldownTimer);
+  let remaining = seconds;
+  button.disabled = true;
+  button.textContent = "Resend email in " + remaining + "s";
+  resendCooldownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(resendCooldownTimer);
+      resendCooldownTimer = null;
+      button.disabled = false;
+      button.textContent = "Resend verification email";
+    } else {
+      button.textContent = "Resend email in " + remaining + "s";
+    }
+  }, 1000);
+}
 function showVerification(user) {
   currentUser = user;
   appView.hidden = true;
@@ -307,7 +330,8 @@ function showVerification(user) {
   verifyNotice.hidden = false;
   googleButton.hidden = true;
   byId("signedInNotice").hidden = false;
-  byId("signedInNotice").textContent = `Verification email sent to ${user.email || "your address"}.`;
+  byId("signedInNotice").textContent = `Firebase accepted a verification email request for ${user.email || "your address"}. It can take a few minutes; check Spam/Junk and Promotions if it is not in your inbox.`;
+  startResendCooldown();
   byId("resendVerification").hidden = false;
   byId("authSignOut").hidden = false;
   setError();
@@ -321,7 +345,10 @@ function friendlyError(error) {
     "auth/user-not-found": "No account was found for this email. Create an account first.",
     "auth/wrong-password": "The email or password is incorrect.",
     "auth/weak-password": "Choose a stronger password with at least 8 characters.",
-    "auth/too-many-requests": "Too many attempts. Wait a while, then try again.",
+    "auth/too-many-requests": "Firebase is temporarily limiting requests. Wait a few minutes before trying again.",
+    "auth/quota-exceeded": "Firebase has reached its email sending limit for now. Try again later.",
+    "auth/invalid-continue-uri": "The verification return address is not configured in Firebase. Contact the site administrator.",
+    "auth/unauthorized-continue-uri": "The verification return address must be added to Firebase’s authorized domains. Contact the site administrator.",
     "auth/user-disabled": "This account is disabled. Contact the site administrator.",
     "auth/operation-not-allowed": "This sign-in method is not enabled in Firebase yet. Enable it under Authentication → Sign-in method.",
     "auth/popup-closed-by-user": "Google sign-in was cancelled. Try again when you’re ready.",
@@ -391,7 +418,7 @@ form.addEventListener("submit", async (event) => {
     if (mode === "signup") {
       const credential = await createUserWithEmailAndPassword(auth, email, passwordInput.value);
       await updateProfile(credential.user, { displayName: nameInput.value.trim() });
-      await sendEmailVerification(credential.user);
+      await sendEmailVerification(credential.user, verificationActionSettings);
       showVerification(credential.user);
     } else {
       await signInWithEmailAndPassword(auth, email, passwordInput.value);
@@ -441,13 +468,22 @@ byId("forgotPassword").addEventListener("click", async () => {
 
 byId("resendVerification").addEventListener("click", async () => {
   setError();
-  if (!currentUser) return;
+  if (!currentUser || byId("resendVerification").disabled) return;
+  byId("resendVerification").disabled = true;
+  byId("resendVerification").textContent = "Sending…";
   try {
     const { sendEmailVerification } = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
-    await sendEmailVerification(currentUser);
-    byId("signedInNotice").textContent = `A new verification email was sent to ${currentUser.email || "your address"}.`;
+    await sendEmailVerification(currentUser, verificationActionSettings);
+    byId("signedInNotice").textContent = "Firebase accepted a new verification email request for " + (currentUser.email || "your address") + ". Check Spam/Junk and Promotions if it is not in your inbox.";
+    startResendCooldown();
   } catch (error) {
     setError(friendlyError(error));
+    if (error?.code === "auth/too-many-requests" || error?.code === "auth/quota-exceeded") {
+      startResendCooldown(120);
+    } else {
+      byId("resendVerification").disabled = false;
+      byId("resendVerification").textContent = "Resend verification email";
+    }
   }
 });
 
