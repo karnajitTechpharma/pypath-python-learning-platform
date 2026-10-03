@@ -1,4 +1,4 @@
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig } from "./firebase-config.js?v=20261003";
 
 const byId = (id) => document.getElementById(id);
 const screen = byId("authScreen");
