@@ -20,6 +20,7 @@ const submitButton = byId("authSubmit");
 let auth;
 let mode = "signin";
 let currentUser = null;
+let firebaseApp;
 let toastTimer;
 
 function setError(message = "") {
@@ -45,7 +46,7 @@ function setMode(nextMode) {
   setError();
 }
 
-function showApp(user) {
+async function showApp(user) {
   currentUser = user;
   screen.hidden = true;
   appView.hidden = false;
@@ -57,6 +58,13 @@ function showApp(user) {
   byId("currentDate").textContent = new Intl.DateTimeFormat(undefined, {
     weekday: "long", month: "long", day: "numeric",
   }).format(new Date()).toUpperCase();
+  try {
+    const { initializeAdminPanel } = await import("./admin.js?v=admin1");
+    await initializeAdminPanel(firebaseApp, user);
+  } catch (error) {
+    byId("publishedStatus").textContent = "Learning database is not available yet. Please try again later.";
+    console.error("Learning data could not load:", error);
+  }
 }
 
 function showSignIn() {
@@ -210,7 +218,7 @@ byId("checkVerification").addEventListener("click", async () => {
   try {
     await currentUser.reload();
     if (currentUser.emailVerified) {
-      showApp(currentUser);
+      await showApp(currentUser);
     } else {
       setError("Firebase still shows this email as unverified. Open the verification link, then try again.");
     }
@@ -270,8 +278,8 @@ async function startFirebase() {
       import("https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"),
     ]);
-    const app = initializeApp(firebaseConfig);
-    auth = authSdk.getAuth(app);
+    firebaseApp = initializeApp(firebaseConfig);
+    auth = authSdk.getAuth(firebaseApp);
     await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
     authSdk.onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -279,7 +287,7 @@ async function startFirebase() {
       } else {
         try {
           await user.reload();
-          if (user.emailVerified) showApp(user);
+          if (user.emailVerified) await showApp(user);
           else showVerification(user);
         } catch (error) {
           setError(friendlyError(error));
