@@ -52,6 +52,7 @@ const firestoreUrl = "https://www.gstatic.com/firebasejs/12.19.0/firebase-firest
 let profileSdk;
 let profileDb;
 let selectedPhotoData = "";
+let photoRemoved = false;
 
 function renderSidebarAvatar(photo, name) {
   const avatar = byId("userAvatar");
@@ -127,6 +128,7 @@ async function initializeProfile(user) {
     byId("profileSignOut").addEventListener("click", signOut);
     byId("removeProfilePhoto").addEventListener("click", () => {
       selectedPhotoData = "";
+      photoRemoved = true;
       renderProfilePhoto("", byId("profileName").value);
       setProfileMessage("Photo removed. Save changes to keep it removed.");
     });
@@ -137,6 +139,7 @@ async function initializeProfile(user) {
       setProfileMessage("Preparing your photo…");
       try {
         selectedPhotoData = await compressProfilePhoto(file);
+        photoRemoved = false;
         renderProfilePhoto(selectedPhotoData, byId("profileName").value);
         setProfileMessage("Photo ready. Save changes to keep it.");
       } catch (error) {
@@ -159,7 +162,8 @@ async function initializeProfile(user) {
   const snapshot = await getDoc(doc(profileDb, "users", user.uid));
   const profile = snapshot.exists() ? snapshot.data() : {};
   const name = profile.displayName || defaultName;
-  selectedPhotoData = profile.photoDataUrl || "";
+  photoRemoved = Boolean(profile.photoRemoved);
+  selectedPhotoData = profile.photoDataUrl || (!photoRemoved ? user.photoURL || "" : "");
   byId("profileName").value = name;
   byId("profileEmail").value = user.email || "";
   byId("profileBio").value = profile.bio || "";
@@ -196,6 +200,7 @@ async function saveProfile(event) {
       dailyGoal: Number(byId("profileGoal").value),
       pythonLevel: byId("profileLevel").value,
       photoDataUrl: selectedPhotoData || null,
+      photoRemoved: photoRemoved && !selectedPhotoData,
       updatedAt: serverTimestamp(),
     }, { merge: true });
     const { updateProfile } = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
