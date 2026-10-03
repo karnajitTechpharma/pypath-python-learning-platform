@@ -119,11 +119,39 @@ async function compressProfilePhoto(file) {
 }
 
 async function initializeProfile(user) {
-  const [{ getFirestore, doc, getDoc }, authSdk] = await Promise.all([
-    import(firestoreUrl),
-    import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"),
-  ]);
-  profileSdk = { doc, getDoc, setDoc: (await import(firestoreUrl)).setDoc, serverTimestamp: (await import(firestoreUrl)).serverTimestamp, getFirestore };
+  if (!byId("profileForm").dataset.bound) {
+    byId("profileForm").addEventListener("submit", saveProfile);
+    byId("profileOpen").addEventListener("click", openProfile);
+    byId("profileOpenTop").addEventListener("click", openProfile);
+    byId("profileClose").addEventListener("click", () => { byId("profilePage").hidden = true; });
+    byId("profileSignOut").addEventListener("click", signOut);
+    byId("removeProfilePhoto").addEventListener("click", () => {
+      selectedPhotoData = "";
+      renderProfilePhoto("", byId("profileName").value);
+      setProfileMessage("Photo removed. Save changes to keep it removed.");
+    });
+    byId("profilePhotoFile").addEventListener("change", async (event) => {
+      const input = event.currentTarget;
+      const file = input.files?.[0];
+      if (!file) return;
+      setProfileMessage("Preparing your photo…");
+      try {
+        selectedPhotoData = await compressProfilePhoto(file);
+        renderProfilePhoto(selectedPhotoData, byId("profileName").value);
+        setProfileMessage("Photo ready. Save changes to keep it.");
+      } catch (error) {
+        setProfileMessage(error.message || "Could not use that photo.", true);
+      } finally {
+        input.value = "";
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !byId("profilePage").hidden) byId("profilePage").hidden = true;
+    });
+    byId("profileForm").dataset.bound = "true";
+  }
+  const { getFirestore, doc, getDoc, setDoc, serverTimestamp } = await import(firestoreUrl);
+  profileSdk = { doc, getDoc, setDoc, serverTimestamp, getFirestore };
   profileDb = getFirestore(firebaseApp);
   const snapshot = await getDoc(doc(profileDb, "users", user.uid));
   const profile = snapshot.exists() ? snapshot.data() : {};
@@ -142,36 +170,7 @@ async function initializeProfile(user) {
   byId("profileProvider").textContent = providers.join(", ") || "Account sign-in";
   renderSidebarAvatar(selectedPhotoData, name);
   renderProfilePhoto(selectedPhotoData, name);
-  if (!byId("profileForm").dataset.bound) {
-    byId("profileForm").addEventListener("submit", saveProfile);
-    byId("profileOpen").addEventListener("click", openProfile);
-    byId("profileOpenTop").addEventListener("click", openProfile);
-    byId("profileClose").addEventListener("click", () => { byId("profilePage").hidden = true; });
-    byId("profileSignOut").addEventListener("click", signOut);
-    byId("removeProfilePhoto").addEventListener("click", () => {
-      selectedPhotoData = "";
-      renderProfilePhoto("", byId("profileName").value);
-      setProfileMessage("Photo removed. Save changes to keep it removed.");
-    });
-    byId("profilePhotoFile").addEventListener("change", async (event) => {
-      const file = event.currentTarget.files?.[0];
-      if (!file) return;
-      setProfileMessage("Preparing your photo…");
-      try {
-        selectedPhotoData = await compressProfilePhoto(file);
-        renderProfilePhoto(selectedPhotoData, byId("profileName").value);
-        setProfileMessage("Photo ready. Save changes to keep it.");
-      } catch (error) {
-        setProfileMessage(error.message || "Could not use that photo.", true);
-      } finally {
-        event.currentTarget.value = "";
-      }
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !byId("profilePage").hidden) byId("profilePage").hidden = true;
-    });
-    byId("profileForm").dataset.bound = "true";
-  }
+
 }
 
 async function saveProfile(event) {
