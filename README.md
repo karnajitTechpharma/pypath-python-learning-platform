@@ -1,25 +1,31 @@
 # PyPath — Python learning platform
 
-PyPath is a beginner Python course interface hosted as static files on GitHub Pages. This revision adds Firebase Authentication for actual email/password accounts, email verification, password reset, sign-out, and a private-by-UID Firestore ruleset for future learner records.
+PyPath is a beginner Python learning platform hosted on GitHub Pages and connected to Firebase.
 
-## Activate real accounts
+## Sign-in
 
-1. In Firebase Console, create a project and register a **Web app**.
-2. In **Authentication → Sign-in method**, enable **Email/Password**.
-3. In **Authentication → Settings → Authorized domains**, add `karnajittechpharma.github.io`.
-4. In **Project settings → Your apps**, copy the web app values into `firebase-config.js` (`apiKey`, `authDomain`, `projectId`, and `appId`). These are client-side identifiers and will be visible in the website. Never put a service-account JSON/private key in this repository.
-5. Deploy `firestore.rules` to the project if/when enabling Firestore.
+Email/password accounts use Firebase Authentication. A verified sign-in is remembered in the current browser using Firebase's local persistence; the owner and learners each sign in once per browser/device, unless they sign out, clear site data, or switch devices. Email verification is required before the learning area opens.
 
-GitHub Pages can then serve the authentication code directly; it does not need a server or build step. Accounts and credentials are handled by Firebase Authentication. Email verification is required before the dashboard is shown.
+## Admin panel and course content
 
-## Scope of this revision
+The admin panel is shown only to a verified user whose UID has an `admins/{uid}` marker in Firestore. That marker must be created by the Firebase project owner in the Firebase Console after the owner's account is registered; website clients cannot create or change administrator markers. The admin panel manages lessons, YouTube URLs, notes, quiz options, and publishing status. Published lessons are visible to verified learners.
 
-Authentication is connected to Firebase once the project config and provider are set. Course completion, lesson activity, quiz scores, streaks, and notes are **not yet saved to Firestore**. The dashboard shows zero/not-started states and labels course actions as previews so it does not imply that learning progress is already persisted. Firestore rules are included as a secure starting point but do not create a database or connect progress automatically.
+## Firebase setup
 
-## Files
+1. Create a Firebase project and register a Web app.
+2. Enable **Authentication → Sign-in method → Email/Password**.
+3. Add `karnajittechpharma.github.io` under **Authentication → Settings → Authorized domains**.
+4. Put the web app's `apiKey`, `authDomain`, `projectId`, and `appId` in `firebase-config.js`. These browser identifiers are public; never add service-account JSON or private keys.
+5. Create the default Cloud Firestore database in the agreed location, then publish `firestore.rules` (or use `firebase deploy --only firestore:rules`). The default database location cannot be changed after provisioning.
+6. After the owner creates and verifies their PyPath account, get its UID from Authentication → Users, then create an `admins/{uid}` document from the Firebase Console. A simple field such as `role: "admin"` is optional; the rules only rely on the document's existence.
 
-- `index.html` — site and sign-in/sign-up interface.
-- `auth.js` — Firebase Authentication flow.
-- `firebase-config.js` — public web-app config placeholder.
-- `firestore.rules` and `firebase.json` — private learner-data rules for a later progress-storage feature.
+The project uses Firebase's Spark plan. Firestore has a free quota, with daily limits; usage beyond no-cost quotas may require a billing upgrade. Authentication and course content are separate from user progress. The `users/{uid}` rules are ready for progress, notes, and quiz records, but those records are not yet wired to the interface.
+
+## Important files
+
+- `index.html` — site, sign-in, learner dashboard, published lessons, and admin editor.
+- `auth.js` — Firebase Authentication and local browser persistence.
+- `admin.js` — admin access check and Firestore-backed lesson publishing.
+- `firebase-config.js` — public Firebase web app config.
+- `firestore.rules` and `firebase.json` — rules and deploy configuration.
 
