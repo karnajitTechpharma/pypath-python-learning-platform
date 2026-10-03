@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
-Sitemap: https://karnajittechpharma.github.io/pypath-python-learning-platform/sitemap.xml
+Sitemap: https://karnajittechpharma.github.io/pythen-learning-platform/sitemap.xml
 
