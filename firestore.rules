@@ -1,24 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedInAs(userId) {
+    function verifiedLearner() {
       return request.auth != null
-        && request.auth.uid == userId
         && request.auth.token.email_verified == true;
     }
 
-    // Each learner can access only their own profile and learning records.
+    function ownsUser(userId) {
+      return verifiedLearner() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return verifiedLearner()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Admin markers are provisioned by the project owner through Firebase Console.
+    // No website client can create, edit, or remove an admin marker.
+    match /admins/{userId} {
+      allow get: if ownsUser(userId);
+      allow list, create, update, delete: if false;
+    }
+
+    // Learners can see published lessons. Admins can also read drafts and manage lessons.
+    match /courses/{lessonId} {
+      allow get, list: if verifiedLearner()
+        && (resource.data.published == true || isAdmin());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // Learners can access only their own profile and learning records.
     match /users/{userId} {
-      allow read, create, update: if signedInAs(userId);
+      allow read, create, update: if ownsUser(userId);
       allow delete: if false;
 
       match /{collection}/{document=**} {
-        allow read, create, update, delete: if signedInAs(userId)
+        allow read, create, update, delete: if ownsUser(userId)
           && collection in ['progress', 'notes', 'quizAttempts', 'activity'];
       }
     }
 
-    // All other collections are closed unless an explicit rule is added.
+    // Deny everything else unless an explicit rule is added.
     match /{document=**} {
       allow read, write: if false;
     }
