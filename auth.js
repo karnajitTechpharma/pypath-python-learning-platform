@@ -153,9 +153,12 @@ async function initializeProfile(user) {
   const { getFirestore, doc, getDoc, setDoc, serverTimestamp } = await import(firestoreUrl);
   profileSdk = { doc, getDoc, setDoc, serverTimestamp, getFirestore };
   profileDb = getFirestore(firebaseApp);
+  const defaultName = user.displayName || user.email?.split("@")[0] || "Learner";
+  byId("profileName").value = defaultName;
+  byId("profileEmail").value = user.email || "";
   const snapshot = await getDoc(doc(profileDb, "users", user.uid));
   const profile = snapshot.exists() ? snapshot.data() : {};
-  const name = profile.displayName || user.displayName || user.email?.split("@")[0] || "Learner";
+  const name = profile.displayName || defaultName;
   selectedPhotoData = profile.photoDataUrl || "";
   byId("profileName").value = name;
   byId("profileEmail").value = user.email || "";
