@@ -52,9 +52,10 @@ const firestoreUrl = "https://www.gstatic.com/firebasejs/12.19.0/firebase-firest
 let profileSdk;
 let profileDb;
 let selectedPhotoData = "";
+let selectedAvatarEmoji = "👤";
 let photoRemoved = false;
 
-function renderSidebarAvatar(photo, name) {
+function renderSidebarAvatar(photo, name, avatarEmoji = "") {
   const avatar = byId("userAvatar");
   if (!avatar) return;
   avatar.replaceChildren();
@@ -64,18 +65,18 @@ function renderSidebarAvatar(photo, name) {
     image.alt = "";
     avatar.append(image);
   } else {
-    avatar.textContent = (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
+    avatar.textContent = avatarEmoji || (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
   }
 }
 
-function renderProfilePhoto(photo, name) {
+function renderProfilePhoto(photo, name, avatarEmoji = "") {
   const image = byId("profilePhoto");
   const initial = byId("profileInitial");
   if (!image || !initial) return;
   image.hidden = !photo;
   initial.hidden = Boolean(photo);
   if (photo) image.src = photo;
-  else initial.textContent = (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
+  else initial.textContent = avatarEmoji || (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
 }
 
 function setProfileMessage(message, isError = false) {
@@ -119,6 +120,18 @@ async function compressProfilePhoto(file) {
   }
 }
 
+function renderAvatarChoices() {
+  document.querySelectorAll(".avatar-choice").forEach((choice) => {
+    choice.setAttribute("aria-pressed", String(choice.dataset.avatar === selectedAvatarEmoji));
+  });
+}
+
+function updateGenderField() {
+  const selfDescribing = byId("profileGender").value === "Self-described";
+  byId("profileGenderDetailLabel").hidden = !selfDescribing;
+  byId("profileGenderDetail").required = false;
+}
+
 async function initializeProfile(user) {
   if (!byId("profileForm").dataset.bound) {
     byId("profileForm").addEventListener("submit", saveProfile);
@@ -129,9 +142,22 @@ async function initializeProfile(user) {
     byId("removeProfilePhoto").addEventListener("click", () => {
       selectedPhotoData = "";
       photoRemoved = true;
-      renderProfilePhoto("", byId("profileName").value);
+      renderSidebarAvatar("", byId("profileName").value, selectedAvatarEmoji);
+      renderProfilePhoto("", byId("profileName").value, selectedAvatarEmoji);
       setProfileMessage("Photo removed. Save changes to keep it removed.");
     });
+    document.querySelectorAll(".avatar-choice").forEach((choice) => {
+      choice.addEventListener("click", () => {
+        selectedAvatarEmoji = choice.dataset.avatar || "👤";
+        selectedPhotoData = "";
+        photoRemoved = true;
+        renderAvatarChoices();
+        renderSidebarAvatar("", byId("profileName").value, selectedAvatarEmoji);
+        renderProfilePhoto("", byId("profileName").value, selectedAvatarEmoji);
+        setProfileMessage("Avatar selected. Save changes to keep it.");
+      });
+    });
+    byId("profileGender").addEventListener("change", updateGenderField);
     byId("profilePhotoFile").addEventListener("change", async (event) => {
       const input = event.currentTarget;
       const file = input.files?.[0];
@@ -140,7 +166,9 @@ async function initializeProfile(user) {
       try {
         selectedPhotoData = await compressProfilePhoto(file);
         photoRemoved = false;
-        renderProfilePhoto(selectedPhotoData, byId("profileName").value);
+        renderSidebarAvatar(selectedPhotoData, byId("profileName").value, selectedAvatarEmoji);
+        renderProfilePhoto(selectedPhotoData, byId("profileName").value, selectedAvatarEmoji);
+        renderAvatarChoices();
         setProfileMessage("Photo ready. Save changes to keep it.");
       } catch (error) {
         setProfileMessage(error.message || "Could not use that photo.", true);
@@ -163,20 +191,25 @@ async function initializeProfile(user) {
   const profile = snapshot.exists() ? snapshot.data() : {};
   const name = profile.displayName || defaultName;
   photoRemoved = Boolean(profile.photoRemoved);
+  selectedAvatarEmoji = profile.avatarEmoji || "👤";
   selectedPhotoData = profile.photoDataUrl || (!photoRemoved ? user.photoURL || "" : "");
   byId("profileName").value = name;
   byId("profileEmail").value = user.email || "";
   byId("profileBio").value = profile.bio || "";
   byId("profileGoal").value = String([15, 30, 45, 60].includes(Number(profile.dailyGoal)) ? Number(profile.dailyGoal) : 15);
   byId("profileLevel").value = profile.pythonLevel || "Beginner";
+  byId("profileGender").value = profile.gender || "";
+  byId("profileGenderDetail").value = profile.genderDetail || "";
+  updateGenderField();
+  renderAvatarChoices();
   byId("profileDisplayHeading").textContent = name;
   byId("profileJoined").textContent = user.metadata?.creationTime
     ? new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(user.metadata.creationTime))
     : "PYTHEN learner";
   const providers = (user.providerData || []).map((entry) => entry.providerId === "google.com" ? "Google" : entry.providerId === "password" ? "Email and password" : entry.providerId);
   byId("profileProvider").textContent = providers.join(", ") || "Account sign-in";
-  renderSidebarAvatar(selectedPhotoData, name);
-  renderProfilePhoto(selectedPhotoData, name);
+  renderSidebarAvatar(selectedPhotoData, name, selectedAvatarEmoji);
+  renderProfilePhoto(selectedPhotoData, name, selectedAvatarEmoji);
 
 }
 
@@ -199,6 +232,9 @@ async function saveProfile(event) {
       bio: byId("profileBio").value.trim(),
       dailyGoal: Number(byId("profileGoal").value),
       pythonLevel: byId("profileLevel").value,
+      gender: byId("profileGender").value,
+      genderDetail: byId("profileGender").value === "Self-described" ? byId("profileGenderDetail").value.trim() : "",
+      avatarEmoji: selectedAvatarEmoji,
       photoDataUrl: selectedPhotoData || null,
       photoRemoved: photoRemoved && !selectedPhotoData,
       updatedAt: serverTimestamp(),
@@ -208,8 +244,9 @@ async function saveProfile(event) {
     byId("sidebarName").textContent = displayName;
     byId("welcomeName").textContent = displayName;
     byId("profileDisplayHeading").textContent = displayName;
-    renderSidebarAvatar(selectedPhotoData, displayName);
-    renderProfilePhoto(selectedPhotoData, displayName);
+    renderSidebarAvatar(selectedPhotoData, displayName, selectedAvatarEmoji);
+    renderProfilePhoto(selectedPhotoData, displayName, selectedAvatarEmoji);
+    renderAvatarChoices();
     setProfileMessage("Profile saved.");
   } catch (error) {
     setProfileMessage(error.message || "Could not save your profile. Try again.", true);
