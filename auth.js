@@ -47,6 +47,170 @@ function setMode(nextMode) {
   setError();
 }
 
+
+const firestoreUrl = "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+let profileSdk;
+let profileDb;
+let selectedPhotoData = "";
+
+function renderSidebarAvatar(photo, name) {
+  const avatar = byId("userAvatar");
+  if (!avatar) return;
+  avatar.replaceChildren();
+  if (photo) {
+    const image = document.createElement("img");
+    image.src = photo;
+    image.alt = "";
+    avatar.append(image);
+  } else {
+    avatar.textContent = (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
+  }
+}
+
+function renderProfilePhoto(photo, name) {
+  const image = byId("profilePhoto");
+  const initial = byId("profileInitial");
+  if (!image || !initial) return;
+  image.hidden = !photo;
+  initial.hidden = Boolean(photo);
+  if (photo) image.src = photo;
+  else initial.textContent = (name || "Learner").trim().slice(0, 1).toUpperCase() || "👤";
+}
+
+function setProfileMessage(message, isError = false) {
+  const status = byId("profileStatus");
+  status.textContent = message;
+  status.style.color = isError ? "#a34832" : "";
+}
+
+function openProfile() {
+  byId("profilePage").hidden = false;
+  byId("profileName").focus();
+}
+
+async function compressProfilePhoto(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Choose a PNG, JPG, or WebP image.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("Choose an image under 5 MB.");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const scale = Math.min(1, 320 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= 180 * 1024) {
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("Could not read that image."));
+          reader.readAsDataURL(blob);
+        });
+      }
+    }
+    throw new Error("That image is too large after compression. Try a smaller photo.");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function initializeProfile(user) {
+  const [{ getFirestore, doc, getDoc }, authSdk] = await Promise.all([
+    import(firestoreUrl),
+    import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"),
+  ]);
+  profileSdk = { doc, getDoc, setDoc: (await import(firestoreUrl)).setDoc, serverTimestamp: (await import(firestoreUrl)).serverTimestamp, getFirestore };
+  profileDb = getFirestore(firebaseApp);
+  const snapshot = await getDoc(doc(profileDb, "users", user.uid));
+  const profile = snapshot.exists() ? snapshot.data() : {};
+  const name = profile.displayName || user.displayName || user.email?.split("@")[0] || "Learner";
+  selectedPhotoData = profile.photoDataUrl || "";
+  byId("profileName").value = name;
+  byId("profileEmail").value = user.email || "";
+  byId("profileBio").value = profile.bio || "";
+  byId("profileGoal").value = String([15, 30, 45, 60].includes(Number(profile.dailyGoal)) ? Number(profile.dailyGoal) : 15);
+  byId("profileLevel").value = profile.pythonLevel || "Beginner";
+  byId("profileDisplayHeading").textContent = name;
+  byId("profileJoined").textContent = user.metadata?.creationTime
+    ? new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(user.metadata.creationTime))
+    : "PYTHEN learner";
+  const providers = (user.providerData || []).map((entry) => entry.providerId === "google.com" ? "Google" : entry.providerId === "password" ? "Email and password" : entry.providerId);
+  byId("profileProvider").textContent = providers.join(", ") || "Account sign-in";
+  renderSidebarAvatar(selectedPhotoData, name);
+  renderProfilePhoto(selectedPhotoData, name);
+  if (!byId("profileForm").dataset.bound) {
+    byId("profileForm").addEventListener("submit", saveProfile);
+    byId("profileOpen").addEventListener("click", openProfile);
+    byId("profileOpenTop").addEventListener("click", openProfile);
+    byId("profileClose").addEventListener("click", () => { byId("profilePage").hidden = true; });
+    byId("profileSignOut").addEventListener("click", signOut);
+    byId("removeProfilePhoto").addEventListener("click", () => {
+      selectedPhotoData = "";
+      renderProfilePhoto("", byId("profileName").value);
+      setProfileMessage("Photo removed. Save changes to keep it removed.");
+    });
+    byId("profilePhotoFile").addEventListener("change", async (event) => {
+      const file = event.currentTarget.files?.[0];
+      if (!file) return;
+      setProfileMessage("Preparing your photo…");
+      try {
+        selectedPhotoData = await compressProfilePhoto(file);
+        renderProfilePhoto(selectedPhotoData, byId("profileName").value);
+        setProfileMessage("Photo ready. Save changes to keep it.");
+      } catch (error) {
+        setProfileMessage(error.message || "Could not use that photo.", true);
+      } finally {
+        event.currentTarget.value = "";
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !byId("profilePage").hidden) byId("profilePage").hidden = true;
+    });
+    byId("profileForm").dataset.bound = "true";
+  }
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  if (!currentUser || !profileDb || !profileSdk) return;
+  const displayName = byId("profileName").value.trim();
+  if (!displayName) {
+    setProfileMessage("Add a display name before saving.", true);
+    byId("profileName").focus();
+    return;
+  }
+  const button = byId("saveProfile");
+  button.disabled = true;
+  setProfileMessage("Saving your profile…");
+  try {
+    const { doc, setDoc, serverTimestamp } = profileSdk;
+    await setDoc(doc(profileDb, "users", currentUser.uid), {
+      displayName,
+      bio: byId("profileBio").value.trim(),
+      dailyGoal: Number(byId("profileGoal").value),
+      pythonLevel: byId("profileLevel").value,
+      photoDataUrl: selectedPhotoData || null,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    const { updateProfile } = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
+    await updateProfile(currentUser, { displayName });
+    byId("sidebarName").textContent = displayName;
+    byId("welcomeName").textContent = displayName;
+    byId("profileDisplayHeading").textContent = displayName;
+    renderSidebarAvatar(selectedPhotoData, displayName);
+    renderProfilePhoto(selectedPhotoData, displayName);
+    setProfileMessage("Profile saved.");
+  } catch (error) {
+    setProfileMessage(error.message || "Could not save your profile. Try again.", true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function showApp(user) {
   currentUser = user;
   screen.hidden = true;
@@ -55,10 +219,16 @@ async function showApp(user) {
   byId("welcomeName").textContent = name;
   byId("sidebarName").textContent = name;
   byId("sidebarEmail").textContent = user.email || "Signed in";
-  byId("userAvatar").textContent = name.slice(0, 1).toUpperCase();
+  renderSidebarAvatar("", name);
   byId("currentDate").textContent = new Intl.DateTimeFormat(undefined, {
     weekday: "long", month: "long", day: "numeric",
   }).format(new Date()).toUpperCase();
+  try {
+    await initializeProfile(user);
+  } catch (error) {
+    setProfileMessage(error.message || "Profile details could not load.", true);
+    console.error("Profile could not load:", error);
+  }
   try {
     const { initializeAdminPanel } = await import("./admin.js?v=admin1");
     await initializeAdminPanel(firebaseApp, user);
@@ -265,7 +435,7 @@ async function signOut() {
 }
 
 byId("authSignOut").addEventListener("click", signOut);
-byId("dashboardSignOut").addEventListener("click", signOut);
+
 
 function toast(message) {
   const el = byId("toast");
